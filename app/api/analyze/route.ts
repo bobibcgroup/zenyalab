@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+// Configure runtime for Vercel - ensure enough time for webhook call
+export const maxDuration = 10 // 10 seconds max execution time
+export const runtime = 'nodejs' // Use Node.js runtime for better fetch support
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.json()
@@ -121,25 +125,83 @@ Important formatting rules:
       structuredFormData[fieldName] = formData[key]
     })
 
-    // Send form data and analysis to n8n webhook (non-blocking)
+    // Send form data and analysis to n8n webhook
     const n8nWebhookUrl = 'https://n8n.bobwazneh.com/webhook/zenyalab'
     
-    // Fire and forget - don't wait for webhook response
-    fetch(n8nWebhookUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        formData: structuredFormData,
-        rawFormData: formData, // Keep raw data as backup
-        analysis: analysis,
+    // Prepare payload - n8n webhooks typically expect data in the request body
+    // Send both structured and raw data for flexibility
+    const webhookPayload = {
+      ...structuredFormData, // Spread structured data at top level for easy access
+      formData: structuredFormData, // Also include nested for reference
+      rawFormData: formData, // Keep raw data as backup
+      analysis: analysis,
+      timestamp: new Date().toISOString(),
+    }
+
+    // Call webhook with timeout - await to ensure it executes in serverless environments
+    // Timeout after 5 seconds so we don't block the user response too long
+    try {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => {
+        controller.abort()
+      }, 5000) // 5 second timeout
+
+      console.log('📤 Sending POST request to n8n webhook:', {
+        url: n8nWebhookUrl,
+        payloadKeys: Object.keys(webhookPayload),
+        hasAnalysis: !!analysis,
+      })
+
+      const response = await fetch(n8nWebhookUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify(webhookPayload),
+        signal: controller.signal,
+      })
+
+      clearTimeout(timeoutId)
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Unknown error')
+        console.error(`❌ n8n webhook error: ${response.status} ${response.statusText}`, {
+          url: n8nWebhookUrl,
+          method: 'POST',
+          errorText: errorText.substring(0, 200),
+          headers: Object.fromEntries(response.headers.entries()),
+        })
+      } else {
+        const responseText = await response.text().catch(() => '')
+        console.log('✅ Successfully sent POST request to n8n webhook:', {
+          status: response.status,
+          statusText: response.statusText,
+          responseLength: responseText.length,
+          url: n8nWebhookUrl,
+          method: 'POST',
+        })
+      }
+    } catch (error: any) {
+      // Log detailed error information
+      const errorDetails: any = {
+        url: n8nWebhookUrl,
+        error: error?.message || String(error),
+        name: error?.name,
         timestamp: new Date().toISOString(),
-      }),
-    }).catch((error) => {
-      // Log error but don't block the response
-      console.error('Failed to send data to n8n webhook:', error)
-    })
+      }
+      
+      if (error?.code) errorDetails.code = error.code
+      if (error?.cause) errorDetails.cause = error.cause
+      
+      // Check if it's a timeout/abort error
+      if (error?.name === 'AbortError' || error?.message?.includes('timeout')) {
+        console.warn('⚠️ n8n webhook call timed out or was aborted:', errorDetails)
+      } else {
+        console.error('❌ Failed to send data to n8n webhook:', errorDetails)
+      }
+      // Don't throw - we don't want to block the user response
+    }
 
     return NextResponse.json({ analysis })
   } catch (error) {
