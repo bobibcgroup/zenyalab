@@ -122,7 +122,7 @@ Important formatting rules:
     })
 
     // Send form data and analysis to n8n webhook (non-blocking)
-    const n8nWebhookUrl = 'https://primary-production-eb3d.up.railway.app/webhook/zenyalab'
+    const n8nWebhookUrl = 'https://n8n.bobwazneh.com/webhook/zenyalab'
     
     // Fire and forget - don't wait for webhook response
     fetch(n8nWebhookUrl, {
