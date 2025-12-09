@@ -222,18 +222,10 @@ export default function QuestionModal({ isOpen, onClose }: QuestionModalProps) {
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: 20 }}
-            className="fixed inset-0 z-[201] flex items-center justify-center p-4 md:p-5 overflow-y-auto"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              minHeight: '100vh',
-              paddingTop: '1rem',
-              paddingBottom: '1rem',
-            }}
+            className="fixed inset-0 z-[201] flex items-center justify-center p-4 md:p-5"
           >
             <div
-              className="glassmorphism rounded-3xl p-6 md:p-8 lg:p-10 max-w-2xl w-full max-h-[calc(100vh-2rem)] md:max-h-[90vh] overflow-y-auto relative my-auto"
+              className="glassmorphism rounded-3xl p-6 md:p-8 lg:p-10 max-w-2xl w-full max-h-[90vh] overflow-y-auto relative"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Close Button */}
