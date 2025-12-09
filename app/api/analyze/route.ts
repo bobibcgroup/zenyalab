@@ -98,6 +98,49 @@ Important formatting rules:
     const data = await response.json()
     const analysis = data.choices[0]?.message?.content || 'Unable to generate analysis.'
 
+    // Map question IDs to readable field names for n8n
+    const questionMap: Record<number, string> = {
+      1: 'name',
+      2: 'gender',
+      3: 'age',
+      4: 'sleepHours',
+      5: 'wakesUpRested',
+      6: 'mealsPerDay',
+      7: 'sweetsPerWeek',
+      8: 'fastingDaysPerWeek',
+      9: 'activityLevel',
+      10: 'cardioSessionsPerWeek',
+      11: 'email',
+    }
+
+    // Structure form data with readable field names
+    const structuredFormData: Record<string, any> = {}
+    Object.keys(formData).forEach((key) => {
+      const questionId = parseInt(key)
+      const fieldName = questionMap[questionId] || `question_${key}`
+      structuredFormData[fieldName] = formData[key]
+    })
+
+    // Send form data and analysis to n8n webhook (non-blocking)
+    const n8nWebhookUrl = 'https://primary-production-eb3d.up.railway.app/webhook/zenyalab'
+    
+    // Fire and forget - don't wait for webhook response
+    fetch(n8nWebhookUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        formData: structuredFormData,
+        rawFormData: formData, // Keep raw data as backup
+        analysis: analysis,
+        timestamp: new Date().toISOString(),
+      }),
+    }).catch((error) => {
+      // Log error but don't block the response
+      console.error('Failed to send data to n8n webhook:', error)
+    })
+
     return NextResponse.json({ analysis })
   } catch (error) {
     console.error('Analysis error:', error)
