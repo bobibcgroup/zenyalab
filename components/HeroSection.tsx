@@ -131,12 +131,14 @@ export default function HeroSection() {
         variants={containerVariants}
         initial="hidden"
         animate="visible"
-        className="mb-6 md:mb-8 lg:mb-10 text-[2.5rem] md:text-4xl lg:text-[3.5rem] xl:text-5xl font-black tracking-[0.02em] leading-tight relative z-20"
+        className="mb-6 md:mb-8 lg:mb-10 text-[2.5rem] md:text-4xl lg:text-[3.5rem] xl:text-5xl font-black tracking-[0.02em] relative z-20"
         style={{
           textRendering: 'optimizeLegibility',
           WebkitFontSmoothing: 'antialiased',
           MozOsxFontSmoothing: 'grayscale',
           color: '#00D1C7', // Fallback color
+          lineHeight: '1.3', // Ensure descenders aren't cropped (increased from tight)
+          paddingBottom: '0.15em', // Add space for descenders
         }}
       >
         {/* Subtle glow backdrop with breathing effect */}
@@ -164,6 +166,7 @@ export default function HeroSection() {
             filter: 'none',
             display: 'inline-block',
             textShadow: '0 0 40px rgba(0, 209, 199, 0.3), 0 0 80px rgba(163, 255, 228, 0.15)',
+            lineHeight: '1.3',
           }}
         >
           {words.map((word, index) => (
@@ -171,6 +174,9 @@ export default function HeroSection() {
               key={index}
               variants={wordVariants}
               className="inline-block mr-2 md:mr-3"
+              style={{
+                lineHeight: '1.3',
+              }}
             >
               {word}
             </motion.span>
