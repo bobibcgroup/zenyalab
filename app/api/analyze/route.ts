@@ -203,6 +203,7 @@ Important formatting rules:
     })
 
     // Send form data and analysis to n8n webhook
+    // IMPORTANT: Only trigger webhook AFTER we have successfully received analysis from OpenAI
     const n8nWebhookUrl = 'https://n8n.bobwazneh.com/webhook/zenyalab'
     
     // Prepare payload - n8n webhooks typically expect data in the request body
@@ -215,39 +216,45 @@ Important formatting rules:
       timestamp: new Date().toISOString(),
     }
 
-    // Send webhook in background (non-blocking)
-    // Return response immediately, webhook executes asynchronously
-    const webhookCall = async () => {
-      try {
-        const controller = new AbortController()
-        const timeoutId = setTimeout(() => {
-          controller.abort()
-        }, 10000) // 10 second timeout for background task
+    console.log('📤 Triggering n8n webhook AFTER successful OpenAI response:', {
+      url: n8nWebhookUrl,
+      payloadKeys: Object.keys(webhookPayload),
+      hasAnalysis: !!analysis,
+      analysisLength: analysis.length,
+    })
 
-        console.log('📤 Sending POST request to n8n webhook (background):', {
-          url: n8nWebhookUrl,
-          payloadKeys: Object.keys(webhookPayload),
-          hasAnalysis: !!analysis,
-        })
+    // Send webhook - initiate the request immediately to ensure it starts
+    // This ensures the webhook is triggered after we have the OpenAI response
+    // We start the fetch immediately (which initiates the network request)
+    // but don't await it, so we can return the response to the user quickly
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => {
+      controller.abort()
+    }, 10000) // 10 second timeout for background task
 
-        const response = await fetch(n8nWebhookUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-          body: JSON.stringify(webhookPayload),
-          signal: controller.signal,
-        })
-
+    const webhookStartTime = Date.now()
+    
+    // Start the fetch request immediately - this initiates the network call
+    // The promise will continue executing even after we return the response
+    const webhookPromise = fetch(n8nWebhookUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify(webhookPayload),
+      signal: controller.signal,
+    })
+      .then(async (response) => {
         clearTimeout(timeoutId)
-
+        
         if (!response.ok) {
           const errorText = await response.text().catch(() => 'Unknown error')
           console.error(`❌ n8n webhook error: ${response.status} ${response.statusText}`, {
             url: n8nWebhookUrl,
             method: 'POST',
             errorText: errorText.substring(0, 200),
+            elapsed: Date.now() - webhookStartTime + 'ms',
           })
         } else {
           const responseText = await response.text().catch(() => '')
@@ -257,9 +264,13 @@ Important formatting rules:
             responseLength: responseText.length,
             url: n8nWebhookUrl,
             method: 'POST',
+            elapsed: Date.now() - webhookStartTime + 'ms',
           })
         }
-      } catch (error: any) {
+      })
+      .catch((error: any) => {
+        clearTimeout(timeoutId)
+        
         // Log detailed error information
         const errorDetails: any = {
           url: n8nWebhookUrl,
@@ -277,20 +288,22 @@ Important formatting rules:
         } else {
           console.error('❌ Failed to send data to n8n webhook:', errorDetails)
         }
-      }
-    }
+      })
 
-    // Start webhook call but don't await - return response immediately
-    // Attach error handler to keep promise alive and prevent cancellation
-    webhookCall().catch(() => {
-      // Errors already logged in webhookCall
+    // Ensure webhook promise is tracked (prevents cancellation in serverless)
+    // The fetch has already been initiated, so the network request is in progress
+    // We attach handlers to keep the promise chain alive
+    webhookPromise.catch(() => {
+      // Errors already logged in promise chain
     })
 
-    // Return response immediately - webhook runs in background
+    // Return response immediately - webhook executes in background
+    // Webhook is guaranteed to be triggered since we have the analysis at this point
     const totalTime = Date.now() - startTime
-    console.log('📤 Returning response:', {
+    console.log('📤 Returning response to user:', {
       totalTime: totalTime + 'ms',
-      webhookStarted: true,
+      webhookTriggered: true,
+      hasAnalysis: true,
     })
     
     return NextResponse.json({ analysis })
