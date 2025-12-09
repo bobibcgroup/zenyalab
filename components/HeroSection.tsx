@@ -86,7 +86,7 @@ export default function HeroSection() {
 
   return (
     <motion.div 
-      className="relative z-10 flex flex-col items-center justify-center min-h-screen px-5 py-20 text-center"
+      className="relative z-10 flex flex-col items-center justify-center px-5 text-center"
       variants={floatingVariants}
       animate="animate"
     >
@@ -105,7 +105,7 @@ export default function HeroSection() {
         variants={logoVariants}
         initial="hidden"
         animate="visible"
-        className="mb-8 md:mb-10 text-xl md:text-2xl lg:text-3xl xl:text-4xl font-semibold tracking-[0.2em] relative z-20"
+        className="mb-6 md:mb-8 lg:mb-10 text-xl md:text-2xl lg:text-3xl xl:text-4xl font-semibold tracking-[0.2em] relative z-20"
         style={{
           background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.7) 0%, rgba(0, 209, 199, 0.5) 100%)',
           WebkitBackgroundClip: 'text',
@@ -123,7 +123,7 @@ export default function HeroSection() {
         variants={logoVariants}
         initial="hidden"
         animate="visible"
-        className="mb-8 md:mb-10 w-16 h-px bg-gradient-to-r from-transparent via-zenya-cyan/30 to-transparent relative z-20"
+        className="mb-6 md:mb-8 lg:mb-10 w-16 h-px bg-gradient-to-r from-transparent via-zenya-cyan/30 to-transparent relative z-20"
       />
       
       {/* Main Headline */}
@@ -131,7 +131,7 @@ export default function HeroSection() {
         variants={containerVariants}
         initial="hidden"
         animate="visible"
-        className="mb-8 md:mb-10 text-[2.5rem] md:text-4xl lg:text-[3.5rem] xl:text-5xl font-black tracking-[0.02em] leading-tight relative z-20"
+        className="mb-6 md:mb-8 lg:mb-10 text-[2.5rem] md:text-4xl lg:text-[3.5rem] xl:text-5xl font-black tracking-[0.02em] leading-tight relative z-20"
         style={{
           textRendering: 'optimizeLegibility',
           WebkitFontSmoothing: 'antialiased',
@@ -183,7 +183,7 @@ export default function HeroSection() {
         variants={subheadlineVariants}
         initial="hidden"
         animate="visible"
-        className="text-[1.125rem] md:text-xl lg:text-[1.5rem] font-light text-zenya-cyan/70 max-w-2xl leading-relaxed px-4 relative z-20 mb-8 md:mb-10"
+        className="text-[1.125rem] md:text-xl lg:text-[1.5rem] font-light text-zenya-cyan/70 max-w-2xl leading-relaxed px-4 relative z-20 mb-6 md:mb-8 lg:mb-10"
         style={{
           textShadow: '0 2px 20px rgba(0, 209, 199, 0.2)',
         }}

@@ -29,7 +29,7 @@ export default function Home() {
       {/* Content Layer */}
       <div className="relative z-10 flex flex-col h-screen">
         {/* Hero Content */}
-        <div className="flex-1 flex flex-col items-center justify-center px-5 md:px-8 lg:px-10 py-20 md:py-24">
+        <div className="flex-1 flex flex-col items-center justify-center px-5 md:px-8 lg:px-10 py-8 md:py-20 lg:py-24">
           <HeroSection />
         </div>
 
