@@ -1,0 +1,17 @@
+{
+  "name": "Zenya Lab - Longevity & Human Optimization",
+  "short_name": "Zenya Lab",
+  "description": "Experience the science of living younger, longer.",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ],
+  "theme_color": "#0C0C0D",
+  "background_color": "#0C0C0D",
+  "display": "standalone",
+  "start_url": "/"
+}
+

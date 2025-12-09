@@ -1,0 +1,28 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="1200" height="630" fill="#0C0C0D"/>
+  
+  <!-- Subtle DNA helix pattern -->
+  <g opacity="0.1">
+    <path d="M200 200 Q300 150 400 200 T600 200" stroke="#00D1C7" stroke-width="2" fill="none"/>
+    <path d="M200 250 Q300 200 400 250 T600 250" stroke="#00D1C7" stroke-width="2" fill="none"/>
+    <path d="M600 200 Q700 150 800 200 T1000 200" stroke="#00D1C7" stroke-width="2" fill="none"/>
+    <path d="M600 250 Q700 200 800 250 T1000 250" stroke="#00D1C7" stroke-width="2" fill="none"/>
+  </g>
+  
+  <!-- Logo -->
+  <text x="600" y="180" font-family="Arial, sans-serif" font-size="48" font-weight="bold" fill="#FFFFFF" text-anchor="middle" opacity="0.9">ZENYA LAB</text>
+  
+  <!-- Main Headline -->
+  <text x="600" y="280" font-family="Arial, sans-serif" font-size="72" font-weight="bold" fill="#00D1C7" text-anchor="middle">Longevity, Coming Soon.</text>
+  
+  <!-- Subheadline -->
+  <text x="600" y="340" font-family="Arial, sans-serif" font-size="32" fill="#A3FFE4" text-anchor="middle" opacity="0.8">Experience the science of living younger, longer.</text>
+  
+  <!-- Accent line -->
+  <line x1="500" y1="380" x2="700" y2="380" stroke="#00D1C7" stroke-width="2" opacity="0.5"/>
+  
+  <!-- Tagline -->
+  <text x="600" y="450" font-family="Arial, sans-serif" font-size="24" fill="#FFFFFF" text-anchor="middle" opacity="0.6">Advanced human optimization &amp; longevity</text>
+</svg>
+
