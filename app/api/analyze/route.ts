@@ -3,8 +3,13 @@ import { NextRequest, NextResponse } from 'next/server'
 // Configure runtime for Vercel
 export const runtime = 'nodejs' // Node.js runtime
 // Note: Vercel free tier has 10s timeout, Pro has 60s
-// If you're on Pro, increase maxDuration to 30-60
+// If you're on Pro, increase maxDuration to 30-60 and increase OpenAI timeout accordingly
 export const maxDuration = 10 // 10 seconds max execution time (matches free tier limit)
+
+// OpenAI model configuration
+// Use gpt-3.5-turbo for faster responses (2-4 seconds) or gpt-4 for better quality (5-15 seconds)
+const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-3.5-turbo' // Default to faster model
+const OPENAI_TIMEOUT = OPENAI_MODEL === 'gpt-4' ? 25000 : 8000 // Longer timeout for GPT-4
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now()
@@ -74,16 +79,22 @@ Important formatting rules:
 - Total response should be under 250 words`
 
     // Call OpenAI API with timeout to prevent hanging
-    // Set timeout to 8 seconds to ensure we complete before Vercel's 10s limit
+    // Timeout varies based on model: gpt-3.5-turbo is faster (8s), gpt-4 needs more time (25s)
+    // For Vercel free tier (10s limit), we use 8s timeout to leave buffer
+    // For Vercel Pro (60s limit), GPT-4 can use up to 25s
     const openAIController = new AbortController()
+    // Calculate timeout: leave 2s buffer for Vercel's limit
+    const maxTimeoutMs = (maxDuration * 1000) - 2000 // Leave 2s buffer
+    const timeoutMs = OPENAI_MODEL === 'gpt-4' ? Math.min(OPENAI_TIMEOUT, maxTimeoutMs) : OPENAI_TIMEOUT
     const openAITimeout = setTimeout(() => {
       openAIController.abort()
-      console.error('⏱️ OpenAI API request timeout triggered after 8 seconds')
-    }, 8000) // 8 second timeout (leaves 2s buffer for Vercel's 10s limit)
+      console.error(`⏱️ OpenAI API request timeout triggered after ${timeoutMs}ms`)
+    }, timeoutMs)
 
     console.log('🤖 Calling OpenAI API...', {
-      model: 'gpt-4',
+      model: OPENAI_MODEL,
       promptLength: prompt.length,
+      timeout: timeoutMs + 'ms',
       elapsed: Date.now() - startTime + 'ms',
     })
 
@@ -97,7 +108,7 @@ Important formatting rules:
           'Authorization': `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-          model: 'gpt-4',
+          model: OPENAI_MODEL,
           messages: [
             {
               role: 'system',
@@ -122,9 +133,9 @@ Important formatting rules:
     } catch (error: any) {
       clearTimeout(openAITimeout)
       if (error?.name === 'AbortError') {
-        console.error('⏱️ OpenAI API request timed out after 8 seconds')
+        console.error(`⏱️ OpenAI API request timed out after ${timeoutMs}ms`)
         return NextResponse.json(
-          { error: 'Request timed out. The AI service is taking too long. Please try again.' },
+          { error: `Request timed out after ${Math.round(timeoutMs/1000)}s. The AI service is taking too long. Please try again, or consider using a faster model.` },
           { status: 504 }
         )
       }
