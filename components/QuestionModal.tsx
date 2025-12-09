@@ -168,14 +168,37 @@ export default function QuestionModal({ isOpen, onClose }: QuestionModalProps) {
         })
 
         if (!response.ok) {
-          throw new Error('Failed to generate assessment')
+          let errorMessage = 'Failed to generate assessment'
+          try {
+            const errorData = await response.json()
+            errorMessage = errorData.error || errorMessage
+            console.error('API error response:', {
+              status: response.status,
+              statusText: response.statusText,
+              error: errorData,
+            })
+          } catch {
+            console.error('API error - non-JSON response:', {
+              status: response.status,
+              statusText: response.statusText,
+            })
+          }
+          throw new Error(errorMessage)
         }
 
         const data = await response.json()
+        if (!data.analysis) {
+          console.error('No analysis in response:', data)
+          throw new Error('Invalid response from server')
+        }
         setAnalysis(data.analysis)
-      } catch (err) {
-        console.error('Error generating assessment:', err)
-        setError('Failed to generate assessment. Please try again.')
+      } catch (err: any) {
+        console.error('Error generating assessment:', {
+          error: err,
+          message: err?.message,
+          stack: err?.stack,
+        })
+        setError(err?.message || 'Failed to generate assessment. Please try again.')
         setIsSubmitting(false)
       }
     } else {

@@ -74,11 +74,13 @@ Important formatting rules:
 - Total response should be under 250 words`
 
     // Call OpenAI API with timeout to prevent hanging
-    // Set timeout to 8 seconds to ensure we complete before Vercel's 10s limit
+    // Set timeout to 9 seconds to ensure we complete before Vercel's 10s limit
+    // Note: GPT-4 can be slow, consider using gpt-3.5-turbo for faster responses
     const openAIController = new AbortController()
     const openAITimeout = setTimeout(() => {
       openAIController.abort()
-    }, 8000) // 8 second timeout (leaves 2s buffer for Vercel's 10s limit)
+      console.warn('⚠️ OpenAI API timeout triggered after 9 seconds')
+    }, 9000) // 9 second timeout (leaves 1s buffer for Vercel's 10s limit)
 
     let response: Response
     try {
@@ -89,7 +91,7 @@ Important formatting rules:
           'Authorization': `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-          model: 'gpt-4',
+          model: 'gpt-3.5-turbo', // Using 3.5-turbo for faster responses (change to 'gpt-4' if needed)
           messages: [
             {
               role: 'system',
@@ -108,27 +110,62 @@ Important formatting rules:
       clearTimeout(openAITimeout)
     } catch (error: any) {
       clearTimeout(openAITimeout)
-      if (error?.name === 'AbortError') {
-        console.error('OpenAI API request timed out')
+      if (error?.name === 'AbortError' || error?.message?.includes('aborted')) {
+        console.error('OpenAI API request timed out or was aborted:', {
+          name: error?.name,
+          message: error?.message,
+          elapsed: Date.now() - startTime + 'ms',
+        })
         return NextResponse.json(
-          { error: 'Request timed out. Please try again.' },
+          { error: 'Request timed out. The AI service is taking too long. Please try again.' },
           { status: 504 }
         )
       }
+      console.error('OpenAI API fetch error:', {
+        name: error?.name,
+        message: error?.message,
+        stack: error?.stack,
+      })
       throw error
     }
 
     if (!response.ok) {
-      const error = await response.json()
-      console.error('OpenAI API error:', error)
+      let errorData: any
+      try {
+        errorData = await response.json()
+      } catch {
+        errorData = { message: `HTTP ${response.status}: ${response.statusText}` }
+      }
+      console.error('OpenAI API error:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorData,
+      })
       return NextResponse.json(
-        { error: 'Failed to generate analysis' },
+        { error: 'Failed to generate analysis. Please try again.' },
+        { status: response.status >= 500 ? 500 : response.status }
+      )
+    }
+
+    let data: any
+    try {
+      data = await response.json()
+    } catch (error) {
+      console.error('Failed to parse OpenAI response:', error)
+      return NextResponse.json(
+        { error: 'Invalid response from AI service. Please try again.' },
         { status: 500 }
       )
     }
 
-    const data = await response.json()
-    const analysis = data.choices[0]?.message?.content || 'Unable to generate analysis.'
+    const analysis = data.choices[0]?.message?.content
+    if (!analysis) {
+      console.error('No analysis content in OpenAI response:', data)
+      return NextResponse.json(
+        { error: 'Failed to generate analysis. Please try again.' },
+        { status: 500 }
+      )
+    }
     
     console.log('✅ OpenAI API call completed:', {
       elapsed: Date.now() - startTime + 'ms',
@@ -250,10 +287,19 @@ Important formatting rules:
     })
     
     return NextResponse.json({ analysis })
-  } catch (error) {
-    console.error('Analysis error:', error)
+  } catch (error: any) {
+    const errorMessage = error?.message || String(error)
+    const errorStack = error?.stack
+    console.error('Analysis error:', {
+      message: errorMessage,
+      stack: errorStack,
+      name: error?.name,
+      elapsed: Date.now() - startTime + 'ms',
+    })
+    
+    // Return a user-friendly error message
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Failed to generate assessment. Please try again.' },
       { status: 500 }
     )
   }
