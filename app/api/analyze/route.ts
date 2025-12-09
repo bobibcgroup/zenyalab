@@ -1,12 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-// Configure runtime for Vercel - ensure enough time for webhook call
-export const maxDuration = 10 // 10 seconds max execution time
-export const runtime = 'nodejs' // Use Node.js runtime for better fetch support
+// Configure runtime for Vercel
+export const runtime = 'nodejs' // Node.js runtime
+// Note: Vercel free tier has 10s timeout, Pro has 60s
+// If you're on Pro, increase maxDuration to 30-60
+export const maxDuration = 10 // 10 seconds max execution time (matches free tier limit)
 
 export async function POST(request: NextRequest) {
+  const startTime = Date.now()
   try {
     const formData = await request.json()
+    console.log('📥 Received analyze request:', {
+      timestamp: new Date().toISOString(),
+      elapsed: Date.now() - startTime + 'ms',
+    })
 
     // Get OpenAI API key from environment variables
     const apiKey = process.env.OPENAI_API_KEY
@@ -66,29 +73,50 @@ Important formatting rules:
 - Personalize to ${userName} throughout
 - Total response should be under 250 words`
 
-    // Call OpenAI API
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a world-renowned biohacking expert with deep expertise in longevity optimization, biological age assessment, and evidence-based lifestyle interventions. You provide personalized, concise assessments that help people optimize their healthspan.',
-          },
-          {
-            role: 'user',
-            content: prompt,
-          },
-        ],
-        temperature: 0.7,
-        max_tokens: 800,
-      }),
-    })
+    // Call OpenAI API with timeout to prevent hanging
+    // Set timeout to 8 seconds to ensure we complete before Vercel's 10s limit
+    const openAIController = new AbortController()
+    const openAITimeout = setTimeout(() => {
+      openAIController.abort()
+    }, 8000) // 8 second timeout (leaves 2s buffer for Vercel's 10s limit)
+
+    let response: Response
+    try {
+      response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'gpt-4',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a world-renowned biohacking expert with deep expertise in longevity optimization, biological age assessment, and evidence-based lifestyle interventions. You provide personalized, concise assessments that help people optimize their healthspan.',
+            },
+            {
+              role: 'user',
+              content: prompt,
+            },
+          ],
+          temperature: 0.7,
+          max_tokens: 800,
+        }),
+        signal: openAIController.signal,
+      })
+      clearTimeout(openAITimeout)
+    } catch (error: any) {
+      clearTimeout(openAITimeout)
+      if (error?.name === 'AbortError') {
+        console.error('OpenAI API request timed out')
+        return NextResponse.json(
+          { error: 'Request timed out. Please try again.' },
+          { status: 504 }
+        )
+      }
+      throw error
+    }
 
     if (!response.ok) {
       const error = await response.json()
@@ -101,6 +129,11 @@ Important formatting rules:
 
     const data = await response.json()
     const analysis = data.choices[0]?.message?.content || 'Unable to generate analysis.'
+    
+    console.log('✅ OpenAI API call completed:', {
+      elapsed: Date.now() - startTime + 'ms',
+      analysisLength: analysis.length,
+    })
 
     // Map question IDs to readable field names for n8n
     const questionMap: Record<number, string> = {
@@ -138,71 +171,84 @@ Important formatting rules:
       timestamp: new Date().toISOString(),
     }
 
-    // Call webhook with timeout - await to ensure it executes in serverless environments
-    // Timeout after 5 seconds so we don't block the user response too long
-    try {
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => {
-        controller.abort()
-      }, 5000) // 5 second timeout
+    // Send webhook in background (non-blocking)
+    // Return response immediately, webhook executes asynchronously
+    const webhookCall = async () => {
+      try {
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => {
+          controller.abort()
+        }, 10000) // 10 second timeout for background task
 
-      console.log('📤 Sending POST request to n8n webhook:', {
-        url: n8nWebhookUrl,
-        payloadKeys: Object.keys(webhookPayload),
-        hasAnalysis: !!analysis,
-      })
-
-      const response = await fetch(n8nWebhookUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: JSON.stringify(webhookPayload),
-        signal: controller.signal,
-      })
-
-      clearTimeout(timeoutId)
-
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => 'Unknown error')
-        console.error(`❌ n8n webhook error: ${response.status} ${response.statusText}`, {
+        console.log('📤 Sending POST request to n8n webhook (background):', {
           url: n8nWebhookUrl,
-          method: 'POST',
-          errorText: errorText.substring(0, 200),
-          headers: Object.fromEntries(response.headers.entries()),
+          payloadKeys: Object.keys(webhookPayload),
+          hasAnalysis: !!analysis,
         })
-      } else {
-        const responseText = await response.text().catch(() => '')
-        console.log('✅ Successfully sent POST request to n8n webhook:', {
-          status: response.status,
-          statusText: response.statusText,
-          responseLength: responseText.length,
+
+        const response = await fetch(n8nWebhookUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: JSON.stringify(webhookPayload),
+          signal: controller.signal,
+        })
+
+        clearTimeout(timeoutId)
+
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => 'Unknown error')
+          console.error(`❌ n8n webhook error: ${response.status} ${response.statusText}`, {
+            url: n8nWebhookUrl,
+            method: 'POST',
+            errorText: errorText.substring(0, 200),
+          })
+        } else {
+          const responseText = await response.text().catch(() => '')
+          console.log('✅ Successfully sent POST request to n8n webhook:', {
+            status: response.status,
+            statusText: response.statusText,
+            responseLength: responseText.length,
+            url: n8nWebhookUrl,
+            method: 'POST',
+          })
+        }
+      } catch (error: any) {
+        // Log detailed error information
+        const errorDetails: any = {
           url: n8nWebhookUrl,
-          method: 'POST',
-        })
+          error: error?.message || String(error),
+          name: error?.name,
+          timestamp: new Date().toISOString(),
+        }
+        
+        if (error?.code) errorDetails.code = error.code
+        if (error?.cause) errorDetails.cause = error.cause
+        
+        // Check if it's a timeout/abort error
+        if (error?.name === 'AbortError' || error?.message?.includes('timeout')) {
+          console.warn('⚠️ n8n webhook call timed out or was aborted:', errorDetails)
+        } else {
+          console.error('❌ Failed to send data to n8n webhook:', errorDetails)
+        }
       }
-    } catch (error: any) {
-      // Log detailed error information
-      const errorDetails: any = {
-        url: n8nWebhookUrl,
-        error: error?.message || String(error),
-        name: error?.name,
-        timestamp: new Date().toISOString(),
-      }
-      
-      if (error?.code) errorDetails.code = error.code
-      if (error?.cause) errorDetails.cause = error.cause
-      
-      // Check if it's a timeout/abort error
-      if (error?.name === 'AbortError' || error?.message?.includes('timeout')) {
-        console.warn('⚠️ n8n webhook call timed out or was aborted:', errorDetails)
-      } else {
-        console.error('❌ Failed to send data to n8n webhook:', errorDetails)
-      }
-      // Don't throw - we don't want to block the user response
     }
 
+    // Start webhook call but don't await - return response immediately
+    // Attach error handler to keep promise alive and prevent cancellation
+    webhookCall().catch(() => {
+      // Errors already logged in webhookCall
+    })
+
+    // Return response immediately - webhook runs in background
+    const totalTime = Date.now() - startTime
+    console.log('📤 Returning response:', {
+      totalTime: totalTime + 'ms',
+      webhookStarted: true,
+    })
+    
     return NextResponse.json({ analysis })
   } catch (error) {
     console.error('Analysis error:', error)
