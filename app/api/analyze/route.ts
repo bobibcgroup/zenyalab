@@ -78,10 +78,18 @@ Important formatting rules:
     const openAIController = new AbortController()
     const openAITimeout = setTimeout(() => {
       openAIController.abort()
+      console.error('⏱️ OpenAI API request timeout triggered after 8 seconds')
     }, 8000) // 8 second timeout (leaves 2s buffer for Vercel's 10s limit)
+
+    console.log('🤖 Calling OpenAI API...', {
+      model: 'gpt-4',
+      promptLength: prompt.length,
+      elapsed: Date.now() - startTime + 'ms',
+    })
 
     let response: Response
     try {
+      const openAIStartTime = Date.now()
       response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -106,29 +114,65 @@ Important formatting rules:
         signal: openAIController.signal,
       })
       clearTimeout(openAITimeout)
+      console.log('📡 OpenAI API response received:', {
+        status: response.status,
+        statusText: response.statusText,
+        elapsed: Date.now() - openAIStartTime + 'ms',
+      })
     } catch (error: any) {
       clearTimeout(openAITimeout)
       if (error?.name === 'AbortError') {
-        console.error('OpenAI API request timed out')
+        console.error('⏱️ OpenAI API request timed out after 8 seconds')
         return NextResponse.json(
-          { error: 'Request timed out. Please try again.' },
+          { error: 'Request timed out. The AI service is taking too long. Please try again.' },
           { status: 504 }
         )
       }
+      console.error('❌ OpenAI API fetch error:', {
+        error: error?.message,
+        name: error?.name,
+        stack: error?.stack,
+      })
       throw error
     }
 
     if (!response.ok) {
-      const error = await response.json()
-      console.error('OpenAI API error:', error)
+      let errorMessage = 'Failed to generate analysis'
+      try {
+        const error = await response.json()
+        console.error('OpenAI API error:', error)
+        errorMessage = error.error?.message || error.message || errorMessage
+      } catch (e) {
+        const errorText = await response.text().catch(() => 'Unknown error')
+        console.error('OpenAI API error (non-JSON):', errorText)
+        errorMessage = errorText.substring(0, 200) || errorMessage
+      }
       return NextResponse.json(
-        { error: 'Failed to generate analysis' },
+        { error: errorMessage },
+        { status: response.status || 500 }
+      )
+    }
+
+    let data: any
+    try {
+      data = await response.json()
+    } catch (error) {
+      console.error('Failed to parse OpenAI response:', error)
+      return NextResponse.json(
+        { error: 'Failed to parse analysis response' },
         { status: 500 }
       )
     }
 
-    const data = await response.json()
-    const analysis = data.choices[0]?.message?.content || 'Unable to generate analysis.'
+    const analysis = data.choices?.[0]?.message?.content || 'Unable to generate analysis.'
+    
+    if (!analysis || analysis === 'Unable to generate analysis.') {
+      console.error('No analysis content in OpenAI response:', data)
+      return NextResponse.json(
+        { error: 'No analysis content received from AI' },
+        { status: 500 }
+      )
+    }
     
     console.log('✅ OpenAI API call completed:', {
       elapsed: Date.now() - startTime + 'ms',
@@ -250,10 +294,16 @@ Important formatting rules:
     })
     
     return NextResponse.json({ analysis })
-  } catch (error) {
-    console.error('Analysis error:', error)
+  } catch (error: any) {
+    const errorMessage = error?.message || String(error) || 'Internal server error'
+    console.error('Analysis error:', {
+      error: errorMessage,
+      stack: error?.stack,
+      name: error?.name,
+      elapsed: Date.now() - startTime + 'ms',
+    })
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: errorMessage },
       { status: 500 }
     )
   }

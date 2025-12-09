@@ -167,15 +167,32 @@ export default function QuestionModal({ isOpen, onClose }: QuestionModalProps) {
           body: JSON.stringify(answers),
         })
 
+        const data = await response.json()
+
         if (!response.ok) {
-          throw new Error('Failed to generate assessment')
+          // API returned an error response
+          const errorMessage = data.error || 'Failed to generate assessment. Please try again.'
+          console.error('API error:', errorMessage, response.status)
+          setError(errorMessage)
+          setIsSubmitting(false)
+          return
         }
 
-        const data = await response.json()
+        // Check if analysis exists in response
+        if (!data.analysis) {
+          console.error('No analysis in response:', data)
+          setError('No analysis received. Please try again.')
+          setIsSubmitting(false)
+          return
+        }
+
+        // Success - set analysis and hide submitting state
         setAnalysis(data.analysis)
-      } catch (err) {
+        setIsSubmitting(false)
+      } catch (err: any) {
         console.error('Error generating assessment:', err)
-        setError('Failed to generate assessment. Please try again.')
+        const errorMessage = err?.message || 'Failed to generate assessment. Please try again.'
+        setError(errorMessage)
         setIsSubmitting(false)
       }
     } else {
