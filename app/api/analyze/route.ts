@@ -234,10 +234,8 @@ Important formatting rules:
       analysisLength: analysis.length,
     })
 
-    // Send webhook - initiate the request immediately to ensure it starts
-    // This ensures the webhook is triggered after we have the OpenAI response
-    // We start the fetch immediately (which initiates the network request)
-    // but don't await it, so we can return the response to the user quickly
+    // Send webhook - ensure it executes by waiting briefly for request to start
+    // In serverless environments, we need to ensure the fetch actually initiates
     const controller = new AbortController()
     const timeoutId = setTimeout(() => {
       controller.abort()
@@ -245,8 +243,12 @@ Important formatting rules:
 
     const webhookStartTime = Date.now()
     
-    // Start the fetch request immediately - this initiates the network call
-    // The promise will continue executing even after we return the response
+    // Start the webhook fetch immediately
+    console.log('🚀 Starting webhook fetch request...', {
+      url: n8nWebhookUrl,
+      timestamp: new Date().toISOString(),
+    })
+
     const webhookPromise = fetch(n8nWebhookUrl, {
       method: 'POST',
       headers: {
@@ -259,6 +261,12 @@ Important formatting rules:
       .then(async (response) => {
         clearTimeout(timeoutId)
         
+        console.log('📡 Webhook response received:', {
+          status: response.status,
+          statusText: response.statusText,
+          elapsed: Date.now() - webhookStartTime + 'ms',
+        })
+
         if (!response.ok) {
           const errorText = await response.text().catch(() => 'Unknown error')
           console.error(`❌ n8n webhook error: ${response.status} ${response.statusText}`, {
@@ -301,11 +309,14 @@ Important formatting rules:
         }
       })
 
-    // Ensure webhook promise is tracked (prevents cancellation in serverless)
-    // The fetch has already been initiated, so the network request is in progress
-    // We attach handlers to keep the promise chain alive
-    webhookPromise.catch(() => {
-      // Errors already logged in promise chain
+    // Wait a tiny bit (50ms) to ensure the fetch request is actually initiated
+    // This ensures the network request starts before the function returns
+    // This is a small delay but ensures reliability in serverless environments
+    await new Promise(resolve => setTimeout(resolve, 50))
+    
+    // Attach error handler to keep promise chain alive
+    webhookPromise.catch((err) => {
+      console.error('Webhook promise error (non-fatal):', err?.message)
     })
 
     // Return response immediately - webhook executes in background
