@@ -234,90 +234,75 @@ Important formatting rules:
       analysisLength: analysis.length,
     })
 
-    // Send webhook - ensure it executes by waiting briefly for request to start
-    // In serverless environments, we need to ensure the fetch actually initiates
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => {
-      controller.abort()
-    }, 10000) // 10 second timeout for background task
-
+    // Send webhook - await with timeout to ensure it completes
+    // We'll wait up to 3 seconds for the webhook, then return response to user
     const webhookStartTime = Date.now()
     
-    // Start the webhook fetch immediately
     console.log('🚀 Starting webhook fetch request...', {
       url: n8nWebhookUrl,
       timestamp: new Date().toISOString(),
     })
 
-    const webhookPromise = fetch(n8nWebhookUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      body: JSON.stringify(webhookPayload),
-      signal: controller.signal,
-    })
-      .then(async (response) => {
-        clearTimeout(timeoutId)
-        
-        console.log('📡 Webhook response received:', {
-          status: response.status,
-          statusText: response.statusText,
+    // Use Promise.race to timeout the webhook after 3 seconds
+    // This ensures we don't wait too long, but gives the webhook time to complete
+    try {
+      const webhookResponse = await Promise.race([
+        fetch(n8nWebhookUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: JSON.stringify(webhookPayload),
+        }),
+        new Promise<Response>((_, reject) =>
+          setTimeout(() => reject(new Error('Webhook timeout after 3 seconds')), 3000)
+        ),
+      ])
+
+      console.log('📡 Webhook response received:', {
+        status: webhookResponse.status,
+        statusText: webhookResponse.statusText,
+        elapsed: Date.now() - webhookStartTime + 'ms',
+      })
+
+      if (!webhookResponse.ok) {
+        const errorText = await webhookResponse.text().catch(() => 'Unknown error')
+        console.error(`❌ n8n webhook error: ${webhookResponse.status} ${webhookResponse.statusText}`, {
+          url: n8nWebhookUrl,
+          method: 'POST',
+          errorText: errorText.substring(0, 200),
           elapsed: Date.now() - webhookStartTime + 'ms',
         })
-
-        if (!response.ok) {
-          const errorText = await response.text().catch(() => 'Unknown error')
-          console.error(`❌ n8n webhook error: ${response.status} ${response.statusText}`, {
-            url: n8nWebhookUrl,
-            method: 'POST',
-            errorText: errorText.substring(0, 200),
-            elapsed: Date.now() - webhookStartTime + 'ms',
-          })
-        } else {
-          const responseText = await response.text().catch(() => '')
-          console.log('✅ Successfully sent POST request to n8n webhook:', {
-            status: response.status,
-            statusText: response.statusText,
-            responseLength: responseText.length,
-            url: n8nWebhookUrl,
-            method: 'POST',
-            elapsed: Date.now() - webhookStartTime + 'ms',
-          })
-        }
-      })
-      .catch((error: any) => {
-        clearTimeout(timeoutId)
-        
-        // Log detailed error information
-        const errorDetails: any = {
+      } else {
+        const responseText = await webhookResponse.text().catch(() => '')
+        console.log('✅ Successfully sent POST request to n8n webhook:', {
+          status: webhookResponse.status,
+          statusText: webhookResponse.statusText,
+          responseLength: responseText.length,
           url: n8nWebhookUrl,
-          error: error?.message || String(error),
-          name: error?.name,
-          timestamp: new Date().toISOString(),
-        }
-        
-        if (error?.code) errorDetails.code = error.code
-        if (error?.cause) errorDetails.cause = error.cause
-        
-        // Check if it's a timeout/abort error
-        if (error?.name === 'AbortError' || error?.message?.includes('timeout')) {
-          console.warn('⚠️ n8n webhook call timed out or was aborted:', errorDetails)
-        } else {
-          console.error('❌ Failed to send data to n8n webhook:', errorDetails)
-        }
-      })
-
-    // Wait a tiny bit (50ms) to ensure the fetch request is actually initiated
-    // This ensures the network request starts before the function returns
-    // This is a small delay but ensures reliability in serverless environments
-    await new Promise(resolve => setTimeout(resolve, 50))
-    
-    // Attach error handler to keep promise chain alive
-    webhookPromise.catch((err) => {
-      console.error('Webhook promise error (non-fatal):', err?.message)
-    })
+          method: 'POST',
+          elapsed: Date.now() - webhookStartTime + 'ms',
+        })
+      }
+    } catch (error: any) {
+      // Log error but don't block the response
+      const errorDetails: any = {
+        url: n8nWebhookUrl,
+        error: error?.message || String(error),
+        name: error?.name,
+        timestamp: new Date().toISOString(),
+      }
+      
+      if (error?.code) errorDetails.code = error.code
+      if (error?.cause) errorDetails.cause = error.cause
+      
+      if (error?.message?.includes('timeout')) {
+        console.warn('⚠️ n8n webhook call timed out after 3 seconds (continuing anyway):', errorDetails)
+      } else {
+        console.error('❌ Failed to send data to n8n webhook (non-fatal):', errorDetails)
+      }
+    }
 
     // Return response immediately - webhook executes in background
     // Webhook is guaranteed to be triggered since we have the analysis at this point
